@@ -6,7 +6,7 @@ import hudson.slaves.Cloud
 
 
 
-def newTemplate(){
+def call(){
     echo "hello"
     sshPortToConnectWith = '22'
     def slaveTemplateUsEast1Parameters = [
