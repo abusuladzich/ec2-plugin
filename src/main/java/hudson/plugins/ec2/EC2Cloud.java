@@ -76,6 +76,7 @@ import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.StaplerResponse;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
+
 import javax.servlet.ServletException;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -197,12 +198,12 @@ public abstract class EC2Cloud extends Cloud {
 
     @Deprecated
     protected EC2Cloud(String id, boolean useInstanceProfileForCredentials, String credentialsId, String privateKey,
-            String instanceCapStr, List<? extends SlaveTemplate> templates, String roleArn, String roleSessionName) {
+                       String instanceCapStr, List<? extends SlaveTemplate> templates, String roleArn, String roleSessionName) {
         this(id, useInstanceProfileForCredentials, credentialsId, privateKey, null, instanceCapStr, templates, roleArn, roleSessionName);
     }
 
     @CheckForNull
-    public EC2PrivateKey resolvePrivateKey(){
+    public EC2PrivateKey resolvePrivateKey() {
         if (sshKeysCredentialsId != null) {
             SSHUserPrivateKey privateKeyCredential = getSshCredential(sshKeysCredentialsId, Jenkins.get());
             if (privateKeyCredential != null) {
@@ -216,21 +217,25 @@ public abstract class EC2Cloud extends Cloud {
 
     public abstract URL getS3EndpointUrl() throws IOException;
 
-    public void addTemplate(SlaveTemplate newTemplate){
+    public void addTemplate(SlaveTemplate newTemplate) throws Exception {
+        String newTemplateDescription = newTemplate.description;
+        if (getTemplate(newTemplateDescription) != null) throw new Exception(
+                String.format("A SlaveTemplate with description %s already exists", newTemplateDescription));
         List<SlaveTemplate> templatesHolder = new ArrayList<>(templates);
         templatesHolder.add(newTemplate);
         templates = templatesHolder;
     }
-    private void migratePrivateSshKeyToCredential(String privateKey){
+
+    private void migratePrivateSshKeyToCredential(String privateKey) {
         // GET matching private key credential from Credential API if exists
         Optional<SSHUserPrivateKey> keyCredential = SystemCredentialsProvider.getInstance().getCredentials()
                 .stream()
                 .filter((cred) -> cred instanceof SSHUserPrivateKey)
-                .filter((cred) -> ((SSHUserPrivateKey)cred).getPrivateKey().trim().equals(privateKey.trim()))
-                .map(cred -> (SSHUserPrivateKey)cred)
+                .filter((cred) -> ((SSHUserPrivateKey) cred).getPrivateKey().trim().equals(privateKey.trim()))
+                .map(cred -> (SSHUserPrivateKey) cred)
                 .findFirst();
 
-        if (keyCredential.isPresent()){
+        if (keyCredential.isPresent()) {
             // SET this.sshKeysCredentialsId with the found credential
             sshKeysCredentialsId = keyCredential.get().getId();
         } else {
@@ -258,7 +263,7 @@ public abstract class EC2Cloud extends Cloud {
         for (SlaveTemplate t : templates)
             t.parent = this;
 
-        if (this.sshKeysCredentialsId == null && this.privateKey != null ){
+        if (this.sshKeysCredentialsId == null && this.privateKey != null) {
             migratePrivateSshKeyToCredential(this.privateKey.getPrivateKey());
         }
         this.privateKey = null; // This enforces it not to be persisted and that CasC will never output privateKey on export
@@ -270,7 +275,7 @@ public abstract class EC2Cloud extends Cloud {
             SystemCredentialsProvider systemCredentialsProvider = SystemCredentialsProvider.getInstance();
 
             // ITERATE ON EXISTING CREDS AND DON'T CREATE IF EXIST
-            for (Credentials credentials: systemCredentialsProvider.getCredentials()) {
+            for (Credentials credentials : systemCredentialsProvider.getCredentials()) {
                 if (credentials instanceof AmazonWebServicesCredentials) {
                     AmazonWebServicesCredentials awsCreds = (AmazonWebServicesCredentials) credentials;
                     AWSCredentials awsCredentials = awsCreds.getCredentials();
@@ -303,10 +308,10 @@ public abstract class EC2Cloud extends Cloud {
         return this;
     }
 
-    private void addNewGlobalCredential(Credentials credentials){
-        for (CredentialsStore credentialsStore: CredentialsProvider.lookupStores(Jenkins.get())) {
+    private void addNewGlobalCredential(Credentials credentials) {
+        for (CredentialsStore credentialsStore : CredentialsProvider.lookupStores(Jenkins.get())) {
 
-            if (credentialsStore instanceof  SystemCredentialsProvider.StoreImpl) {
+            if (credentialsStore instanceof SystemCredentialsProvider.StoreImpl) {
 
                 try {
                     credentialsStore.addCredentials(Domain.global(), credentials);
@@ -464,7 +469,7 @@ public abstract class EC2Cloud extends Cloud {
 
             //Reconnect a stopped instance, the ADD is invoking the connect only for the node creation
             Computer c = nodes.get(0).toComputer();
-            if (nodes.get(0).getStopOnTerminate() && c !=  null) {
+            if (nodes.get(0).getStopOnTerminate() && c != null) {
                 c.connect(false);
             }
             jenkinsInstance.addNode(nodes.get(0));
@@ -490,8 +495,8 @@ public abstract class EC2Cloud extends Cloud {
         }
 
         LOGGER.log(Level.FINE, "Counting current agents: "
-            + (template != null ? (" AMI: " + template.getAmi() + " TemplateDesc: " + template.description) : " All AMIS")
-            + " Jenkins Server: " + jenkinsServerUrl);
+                + (template != null ? (" AMI: " + template.getAmi() + " TemplateDesc: " + template.description) : " All AMIS")
+                + " Jenkins Server: " + jenkinsServerUrl);
         int n = 0;
         Set<String> instanceIds = new HashSet<>();
         String description = template != null ? template.description : null;
@@ -507,13 +512,13 @@ public abstract class EC2Cloud extends Cloud {
                 for (Instance i : r.getInstances()) {
                     if (isEc2ProvisionedAmiSlave(i.getTags(), description)) {
                         LOGGER.log(Level.FINE, "Existing instance found: " + i.getInstanceId() + " AMI: " + i.getImageId()
-                        + (template != null ? (" Template: " + description) : "") + " Jenkins Server: " + jenkinsServerUrl);
+                                + (template != null ? (" Template: " + description) : "") + " Jenkins Server: " + jenkinsServerUrl);
                         n++;
                         instanceIds.add(i.getInstanceId());
                     }
                 }
             }
-        } while(result.getNextToken() != null);
+        } while (result.getNextToken() != null);
 
         n += countCurrentEC2SpotSlaves(template, jenkinsServerUrl, instanceIds);
 
@@ -587,7 +592,7 @@ public abstract class EC2Cloud extends Cloud {
                     }
                 }
             }
-        } while(sirResp.getNextToken() != null);
+        } while (sirResp.getNextToken() != null);
         n += countJenkinsNodeSpotInstancesWithoutRequests(template, sirSet, instanceIds);
         return n;
     }
@@ -726,7 +731,9 @@ public abstract class EC2Cloud extends Cloud {
                 LOGGER.log(Level.WARNING, t + ". Exception during provisioning", e);
                 return null;
             }
-        } finally { slaveCountingLock.unlock(); }
+        } finally {
+            slaveCountingLock.unlock();
+        }
     }
 
     @Override
@@ -771,7 +778,7 @@ public abstract class EC2Cloud extends Cloud {
             }
         }
         LOGGER.log(Level.INFO, "We have now {0} computers, waiting for {1} more",
-            new Object[]{jenkinsInstance.getComputers().length, plannedNodes.size()});
+                new Object[]{jenkinsInstance.getComputers().length, plannedNodes.size()});
         return plannedNodes;
     }
 
@@ -814,7 +821,7 @@ public abstract class EC2Cloud extends Cloud {
 
             LOGGER.log(Level.INFO, "{0}. Attempting provision finished", t);
             LOGGER.log(Level.INFO, "We have now {0} computers, waiting for {1} more",
-              new Object[]{Jenkins.get().getComputers().length, number});
+                    new Object[]{Jenkins.get().getComputers().length, number});
         } catch (AmazonClientException | IOException e) {
             LOGGER.log(Level.WARNING, t + ". Exception during provisioning", e);
         }
@@ -824,13 +831,13 @@ public abstract class EC2Cloud extends Cloud {
      * Helper method to reattach lost EC2 node agents @Issue("JENKINS-57795")
      *
      * @param jenkinsInstance Jenkins object that the nodes are to be re-attached to.
-     * @param template The corresponding SlaveTemplate of the nodes that are to be re-attached
-     * @param requestedNum The requested number of nodes to re-attach. We don't go above this in the case its value corresponds to an instance cap.
+     * @param template        The corresponding SlaveTemplate of the nodes that are to be re-attached
+     * @param requestedNum    The requested number of nodes to re-attach. We don't go above this in the case its value corresponds to an instance cap.
      */
     void attemptReattachOrphanOrStoppedNodes(Jenkins jenkinsInstance, SlaveTemplate template, int requestedNum) throws IOException {
         LOGGER.info("Attempting to wake & re-attach orphan/stopped nodes");
         AmazonEC2 ec2 = this.connect();
-        DescribeInstancesResult diResult = template.getDescribeInstanceResult(ec2,true);
+        DescribeInstancesResult diResult = template.getDescribeInstanceResult(ec2, true);
         List<Instance> orphansOrStopped = template.findOrphansOrStopped(diResult, requestedNum);
         template.wakeOrphansOrStoppedUp(ec2, orphansOrStopped);
         /* If the number of possible nodes to re-attach is greater than the number of nodes requested, will only attempt to re-attach up to the number requested */
@@ -846,8 +853,9 @@ public abstract class EC2Cloud extends Cloud {
     private PlannedNode createPlannedNode(final SlaveTemplate t, final EC2AbstractSlave slave) {
         return new PlannedNode(t.getDisplayName(),
                 Computer.threadPoolForRemoting.submit(new Callable<Node>() {
-                    int retryCount     = 0;
+                    int retryCount = 0;
                     private static final int DESCRIBE_LIMIT = 2;
+
                     public Node call() throws Exception {
                         while (true) {
                             String instanceId = slave.getInstanceId();
@@ -872,11 +880,11 @@ public abstract class EC2Cloud extends Cloud {
                             }
 
                             InstanceStateName state = InstanceStateName.fromValue(instance.getState().getName());
-                            if (state.equals(InstanceStateName.Running))  {
+                            if (state.equals(InstanceStateName.Running)) {
                                 //Spot instance are not reconnected automatically,
                                 // but could be new orphans that has the option enable
                                 Computer c = slave.toComputer();
-                                if (slave.getStopOnTerminate() && (c != null ))  {
+                                if (slave.getStopOnTerminate() && (c != null)) {
                                     c.connect(false);
                                 }
 
@@ -888,9 +896,9 @@ public abstract class EC2Cloud extends Cloud {
 
                             if (!state.equals(InstanceStateName.Pending)) {
 
-                                if (retryCount >= DESCRIBE_LIMIT){
-                                    LOGGER.log(Level.WARNING,"Instance {0} did not move to running after {1} attempts, terminating provisioning",
-                                        new Object[]{instanceId, retryCount});
+                                if (retryCount >= DESCRIBE_LIMIT) {
+                                    LOGGER.log(Level.WARNING, "Instance {0} did not move to running after {1} attempts, terminating provisioning",
+                                            new Object[]{instanceId, retryCount});
                                     return null;
                                 }
 
@@ -967,7 +975,7 @@ public abstract class EC2Cloud extends Cloud {
     }
 
     private AmazonEC2 reconnectToEc2() throws IOException {
-        synchronized(this) {
+        synchronized (this) {
             connection = AmazonEC2Factory.getInstance().connect(createCredentialsProvider(), getEc2EndpointUrl());
             return connection;
         }
@@ -980,8 +988,7 @@ public abstract class EC2Cloud extends Cloud {
         try {
             if (connection != null) {
                 return connection;
-            }
-            else {
+            } else {
                 return reconnectToEc2();
             }
         } catch (IOException e) {
@@ -1054,7 +1061,7 @@ public abstract class EC2Cloud extends Cloud {
         long expires = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(60);
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(path, credentials.getAWSSecretKey());
         request.setExpiration(new Date(expires));
-        AmazonS3 s3 =  AmazonS3ClientBuilder.standard().withCredentials(provider).build();
+        AmazonS3 s3 = AmazonS3ClientBuilder.standard().withCredentials(provider).build();
         return s3.generatePresignedUrl(request);
     }
 
@@ -1068,17 +1075,17 @@ public abstract class EC2Cloud extends Cloud {
     }
 
     @CheckForNull
-    private static SSHUserPrivateKey getSshCredential(String id, ItemGroup context){
+    private static SSHUserPrivateKey getSshCredential(String id, ItemGroup context) {
 
         SSHUserPrivateKey credential = CredentialsMatchers.firstOrNull(
-            CredentialsProvider.lookupCredentials(
-                SSHUserPrivateKey.class, // (1)
-                context,
-                null,
-                Collections.emptyList()),
-            CredentialsMatchers.withId(id));
+                CredentialsProvider.lookupCredentials(
+                        SSHUserPrivateKey.class, // (1)
+                        context,
+                        null,
+                        Collections.emptyList()),
+                CredentialsMatchers.withId(id));
 
-        if (credential == null){
+        if (credential == null) {
             LOGGER.log(Level.WARNING, "EC2 Plugin could not find the specified credentials ({0}) in the Jenkins Global Credentials Store, EC2 Plugin for cloud must be manually reconfigured", new String[]{id});
         }
 
@@ -1122,7 +1129,7 @@ public abstract class EC2Cloud extends Cloud {
                 // Don't do anything if the user is only reading the configuration
                 return FormValidation.ok();
             }
-            if (value == null || value.isEmpty()){
+            if (value == null || value.isEmpty()) {
                 return FormValidation.error("No ssh credentials selected");
             }
 
@@ -1155,8 +1162,9 @@ public abstract class EC2Cloud extends Cloud {
 
         /**
          * Tests the connection settings.
-         *
+         * <p>
          * Overriding needs to {@code @RequirePOST}
+         *
          * @param ec2endpoint
          * @param useInstanceProfileForCredentials
          * @param credentialsId
@@ -1246,7 +1254,7 @@ public abstract class EC2Cloud extends Cloud {
                         EC2Cloud ec2_cloud = (EC2Cloud) cloud;
                         LOGGER.finer(() -> "Checking EC2 Connection on: " + ec2_cloud.getDisplayName());
                         try {
-                            if(ec2_cloud.connection != null) {
+                            if (ec2_cloud.connection != null) {
                                 List<Filter> filters = new ArrayList<>();
                                 filters.add(new Filter("tag-key").withValues("bogus-EC2ConnectionKeepalive"));
                                 DescribeInstancesRequest dir = new DescribeInstancesRequest().withFilters(filters);
