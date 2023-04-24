@@ -1,6 +1,6 @@
 import com.amazonaws.services.ec2.model.InstanceType
 import hudson.model.*
-import hudson.plugins.ec2.*
+import main.java.hudson.plugins.ec2.*
 import jenkins.model.Jenkins
 import hudson.slaves.Cloud
 
